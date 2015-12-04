@@ -5,10 +5,19 @@ import serial
 
 import cwiid
 
+# ================ WIIMOTE VARIABLES
+
 wiimotes = []
+states = []
+
+# ================ ARDUINO VARIABLES
+
+arduino_serial = None
+is_arduino_connected = False
+arduino_write_queue = []
 
 arduino_serial_name = "/dev/ttyACM0"
-baud_rate = 9600
+baud_rate = 115200
 
 handshake_send_msg = "RBPI_HANDSHAKE"
 handshake_receive_msg = "ARD_HANDSHAKE"
@@ -20,6 +29,9 @@ message_footer = ":END"
 
 message_code_error = "0:"
 message_code_success = "1:"
+
+# ================ END GLOBALS
+
 
 def main():
 
@@ -37,6 +49,11 @@ def main():
 	serial_read_thr.daemon = True
 	serial_read_thr.start()
 
+	# Start write thread
+	serial_write_thr = threading.Thread(target=serial_write_loop)
+	serial_write_thr.daemon = True
+	serial_write_thr.start()
+
 	print "Press 1+2 on your Wiimote now"
 
 	# start input reading loop
@@ -45,9 +62,12 @@ def main():
 # Polls connected wiimotes @ 60 Hz
 def read_input_loop():
 
+	global wiimotes
+	global states
+
 	while True:
 
-		states = []
+		new_states = []
 
 		# Go through all wiimotes
 		for i in range(len(wiimotes)):
@@ -56,27 +76,65 @@ def read_input_loop():
 
 			# Print messages for button state
 
+			state_dict = {}
+
 			ir_pos = wm.state['ir_src']			
+			
+			if ir_pos[0] is None:
+				state_dict["IR0"] = -1
+			else:
+				state_dict["IR0"] = str(ir_pos[0][0]) + "|" + str(ir_pos[0][1])
 
-			if bool(wm.state['buttons'] & cwiid.BTN_A):
-				print "A %d" % (i + 1)			
-			if bool(wm.state['buttons'] & cwiid.BTN_B):
-				print "B %d" % (i + 1)			
-			if bool(wm.state['buttons'] & cwiid.BTN_HOME):
-				print "Home %d" % (i + 1)			
+			if ir_pos[1] is None:
+				state_dict["IR1"] = -1
+			else:
+				state_dict["IR1"] = str(ir_pos[1][0]) + "|" + str(ir_pos[1][1])
 
-			if bool(wm.state['buttons'] & cwiid.BTN_UP):
-				print "Up %d" % (i + 1)			
-			if bool(wm.state['buttons'] & cwiid.BTN_LEFT):
-				print "Left %d" % (i + 1)			
-			if bool(wm.state['buttons'] & cwiid.BTN_RIGHT):
-				print "Right %d" % (i + 1)			
-			if bool(wm.state['buttons'] & cwiid.BTN_DOWN):
-				print "Down %d" % (i + 1)			
+			if ir_pos[2] is None:
+				state_dict["IR2"] = -1
+			else:
+				state_dict["IR2"] = str(ir_pos[2][0]) + "|" + str(ir_pos[2][1])
 
-			states.append(wm.state)
+			if ir_pos[3] is None:
+				state_dict["IR3"] = -1
+			else:
+				state_dict["IR3"] = str(ir_pos[3][0]) + "|" + str(ir_pos[3][1])
+			
+			
 
-		#send_states(states)
+			state_dict["A"] = int(bool(wm.state['buttons'] & cwiid.BTN_A))
+			if state_dict["A"]:
+				pass#print "A %d" % (i + 1)			
+
+			state_dict["B"] = int(bool(wm.state['buttons'] & cwiid.BTN_B))
+			if state_dict["B"]:
+				pass#print "B %d" % (i + 1)
+
+			state_dict["H"] = int(bool(wm.state['buttons'] & cwiid.BTN_HOME))
+			if state_dict["H"]:
+				pass#print "Home %d" % (i + 1)			
+
+			state_dict["U"] =  int(bool(wm.state['buttons'] & cwiid.BTN_UP))
+			if state_dict["U"]:
+				pass#print "Up %d" % (i + 1)			
+
+			state_dict["L"] = int(bool(wm.state['buttons'] & cwiid.BTN_LEFT))
+			if state_dict["L"]:
+				pass#print "Left %d" % (i + 1)			
+
+			state_dict["R"] = int(bool(wm.state['buttons'] & cwiid.BTN_RIGHT))
+			if state_dict["R"]:
+				pass#print "Right %d" % (i + 1)			
+			
+			state_dict["D"] = int(bool(wm.state['buttons'] & cwiid.BTN_DOWN))
+			if state_dict["D"]:
+				pass#print "Down %d" % (i + 1)			
+
+	
+			new_states.append(state_dict)
+
+		states = new_states		
+		send_states()
 
 		# 60 Hz
 		time.sleep(0.016)
@@ -84,13 +142,16 @@ def read_input_loop():
 # Thread checking for new connections
 def pair_loop():
 
+	global wiimotes
+
 	while True:
 
 		wm = None
 
 		try:
 			wm = cwiid.Wiimote()
-		except:		
+		except:	
+			print "Pair error %s" % sys.exc_info()[0]	
 			pass
 		
 		# Found a Wiimote! :D
@@ -117,29 +178,66 @@ def pair_loop():
 
 		time.sleep(0.4)
 
+def serial_write_loop():	
+
+	global arduino_serial
+	global is_arduino_connected
+	global arduino_write_queue
+
+	while True:
+
+		# Wait until read loop makes connection
+		if arduino_serial is None or not is_arduino_connected:
+
+			time.sleep(1)
+		else:
+		# Proceed to write from write queue @ 60HZ
+
+			#message_to_write = "HELLO ITS NICK"
+			#arduino_write_queue.append(message_to_write)
+
+			
+			# Take copy, pop original queue
+			write_queue = list(arduino_write_queue)
+			arduino_write_queue = arduino_write_queue[len(write_queue):]
+
+			for write_message in write_queue:
+
+				if len(write_message.strip()) > 0:
+
+					entire_message = message_write_header + message_code_success + write_message + message_footer
+					arduino_serial.write(entire_message)
+
+					#print "Sent: %s" % write_message
+
+			# 60 Hz
+			time.sleep(.016)
+		
+
 # Thread reading loop
 def serial_read_loop():
 
-	# Open Arduino serial connection
-
-	arduino_serial = None
-
-	while arduino_serial is None:
-	
-		print "Scanning serial..."
-
-		try:
-			arduino_serial = serial.Serial(arduino_serial_name, baud_rate)
-		except:
-			pass
-
-		time.sleep(1)
-	
-	print "Started serial connection..."
-
-	is_arduino_connected = False
+	global arduino_serial
+	global is_arduino_connected
+	global arduino_write_queue
 
 	while True:
+		
+		# Open Arduino serial connection
+		
+		if arduino_serial is None:
+			print "Scanning serial..."
+
+			try:
+				arduino_serial = serial.Serial(arduino_serial_name, baud_rate)
+				arduino_serial.flushInput()
+				print "Started serial connection..."
+
+			except:
+				pass
+
+			time.sleep(1)
+			continue
 
 		read_line = arduino_serial.readline()
 		read_line = read_line.strip()
@@ -177,9 +275,6 @@ def serial_read_loop():
 
 				print "Got unknown message: <%s>" % read_line
 			
-			timestamp = int(round(time.time() * 1000))
-			message_to_write = "Time is -> " + str(timestamp)
-			arduino_serial.write(message_write_header + message_code_success + message_to_write + message_footer)
 		else:
 
 			# check for handshake
@@ -198,11 +293,36 @@ def serial_read_loop():
 			print "Got unknown message: <%s>" % read_line		
 
 		# 60 Hz
-		time.sleep(0.016)
-						
-#def send_states(states):
+		time.sleep(1)
+		
+# adds states to queue to write				
+def send_states():
 	
+	global states
+	global arduino_write_queue
+
+	message = ""
+
+	for i in range(len(states)):
 	
+		wm_state = states[i]	
+		message += ("WM" + str(i) + "*")		
+
+		keys = wm_state.keys()
+		
+		for j in range(len(keys)):
+		
+			message += str(keys[j]) + "=" + str(wm_state[keys[j]])
+			
+			if j < len(keys) - 1:
+				message += "&"
+		
+		if i < len(states) - 1:
+			message += ";"
+
+	arduino_write_queue.append(message)
+			
+		
 
 if __name__ == "__main__":
 	
