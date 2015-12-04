@@ -7,7 +7,6 @@ import cwiid
 
 wiimotes = []
 
-arduino_serial = None
 arduino_serial_name = "/dev/ttyACM0"
 baud_rate = 9600
 
@@ -23,9 +22,6 @@ message_code_error = "0:"
 message_code_success = "1:"
 
 def main():
-
-	# Open Arduino serial connection
-	arduino_serial = serial.Serial(arduino_serial_name, baud_rate)
 
 	# Sends cwiid errors to garbage
 	sys.stderr = os.fdopen(os.dup(2), "w")
@@ -80,7 +76,7 @@ def read_input_loop():
 
 			states.append(wm.state)
 
-		send_states(states)
+		#send_states(states)
 
 		# 60 Hz
 		time.sleep(0.016)
@@ -124,6 +120,23 @@ def pair_loop():
 # Thread reading loop
 def serial_read_loop():
 
+	# Open Arduino serial connection
+
+	arduino_serial = None
+
+	while arduino_serial is None:
+	
+		print "Scanning serial..."
+
+		try:
+			arduino_serial = serial.Serial(arduino_serial_name, baud_rate)
+		except:
+			pass
+
+		time.sleep(1)
+	
+	print "Started serial connection..."
+
 	is_arduino_connected = False
 
 	while True:
@@ -134,7 +147,7 @@ def serial_read_loop():
 		if is_arduino_connected:
 
 			# Check header and footer		
-			if read_line.startswith(message_read_header) and readline.endswith(message_footer):
+			if read_line.startswith(message_read_header) and read_line.endswith(message_footer):
 
 				stripped_line = read_line[len(message_read_header):]
 				stripped_line = stripped_line[:-len(message_footer)]
@@ -144,11 +157,11 @@ def serial_read_loop():
 				message_data = ""
 
 				if stripped_line.startswith(message_code_success):
-					message_data = stripped_line[len(message_code_success)]
+					message_data = stripped_line[len(message_code_success):]
 					successful_msg = True
 
 				elif stripped_line.startswith(message_code_error):
-					message_data = stripped_line[len(message_code_success)]
+					message_data = stripped_line[len(message_code_success):]
 					successful_msg = False
 
 				# Do success message stuff
@@ -158,20 +171,23 @@ def serial_read_loop():
 
 				else:
 
-					print "Got error: <%s>" % message_data
+					print "Got error: <%s>" % read_line
 
 			else:
 
 				print "Got unknown message: <%s>" % read_line
-
+			
+			timestamp = int(round(time.time() * 1000))
+			message_to_write = "Time is -> " + str(timestamp)
+			arduino_serial.write(message_write_header + message_code_success + message_to_write + message_footer)
 		else:
 
 			# check for handshake
 			if read_line.startswith(handshake_receive_msg):
 				print "Received handshake: <%s>" % read_line
 				# send back handshake
-				arduino_serial.write(handshake_send_msg.encode(ascii))
-				arduino_serial.write("\n".encode(ascii))
+				arduino_serial.write(handshake_send_msg)
+				arduino_serial.write("\n")
 
 			# check for confirmation
 			if read_line.startswith(confirmation_msg):
@@ -179,14 +195,14 @@ def serial_read_loop():
 				print "Received confirmation: <%s>" % read_line
 				is_arduino_connected = True
 
-			print "Got unknown message: <%s>" % read_line
+			print "Got unknown message: <%s>" % read_line		
 
 		# 60 Hz
 		time.sleep(0.016)
 						
-def send_states(states):
-
-
+#def send_states(states):
+	
+	
 
 if __name__ == "__main__":
 	
