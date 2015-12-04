@@ -1,13 +1,13 @@
-char[] handshake_send_msg = "ARD_HANDSHAKE";
-char[] handshake_receive_msg = "RBPI_HANDSHAKE";
-char[] confirmation_msg = "ARD_CONFIRM";
+char handshake_send_msg[]  = "ARD_HANDSHAKE";
+char handshake_receive_msg[]  = "RBPI_HANDSHAKE";
+char confirmation_msg[]  = "ARD_CONFIRM";
 
-char[] message_r_header = "RBPI:";
-char[] message_w_header = "ARDU:";
-char[] message_footer = ":END";
+char message_r_header[]  = "RBPI:";
+char message_w_header[]  = "ARDU:";
+char message_footer[]  = ":END";
 
-char[] message_code_error = "0:";
-char[] message_code_success = "1:";
+char message_code_error[]  = "0:";
+char message_code_success[]  = "1:";
 
 // Looks like (to write, then read):
 // ARDU:1:DATA_GOES_HERE:END\r\n
@@ -20,7 +20,7 @@ void setup() {
   Serial.begin(9600);
 }
 
-void connectPi() {
+bool connectPi() {
 
   int connect_buffer_size = 12;
   char connect_buffer[12] = { 0 };
@@ -61,7 +61,7 @@ void connectPi() {
 
 void readPi() {
 
-  int read_byte = Serial.read()
+  int read_byte = Serial.read();
 
   //if (read_byte != -1) {
   //
@@ -106,7 +106,7 @@ void loop() {
   if (k_is_pi_connected) {
 
      readPi();
-     writePi()
+     writePi();
      delay(16);
   }
 }

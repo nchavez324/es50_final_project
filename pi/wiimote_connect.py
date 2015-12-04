@@ -134,8 +134,7 @@ def serial_read_loop():
 		if is_arduino_connected:
 
 			# Check header and footer		
-			if read_line.startswith(message_read_header) and
-				readline.endswith(message_footer):
+			if read_line.startswith(message_read_header) and readline.endswith(message_footer):
 
 				stripped_line = read_line[len(message_read_header):]
 				stripped_line = stripped_line[:-len(message_footer)]
