@@ -81,6 +81,7 @@ def wiimote_read_input_loop():
 	while True:
 
 		if is_ios_connected and ios_socket is not None:
+		
 			states = []
 
 			# Go through all wiimotes
@@ -146,9 +147,11 @@ def wiimote_read_input_loop():
 
 		
 				states.append(state_dict)
-
+			
 			payload = create_payload(states)
-			send_to_ios(payload, ios_socket)
+			payload = payload.strip()
+			if len(payload) > 0:
+				send_to_ios(payload, ios_socket)
 
 			# 60 Hz
 			time.sleep(0.016)
@@ -169,7 +172,7 @@ def wiimote_pair_loop():
 		try:
 			wm = cwiid.Wiimote()
 		except:	
-			print "Pair error %s" % sys.exc_info()[0]	
+			#print "Pair error %s" % sys.exc_info()[0]	
 			pass
 		
 		# Found a Wiimote! :D
@@ -202,32 +205,44 @@ def ios_connect_loop():
 	global is_ios_connected
 	global ios_socket
 
-	mux = usbmux.USBMux()
+	mux = None
 
 	print "Searching for iOS..."
 
 	# try connect 
 	while True:
 
-		if len(mux.devices) == 0:
+		if mux is None:
+			
+			try:
+				mux = usbmux.USBMux()
+				print "Created MUX connection"
+			except:
+				pass
+		elif mux is not None and len(mux.devices) == 0:
 
 			mux.process(1.0) # timeout for 1 second
 		
-		elif len(mux.devices) > 0 and not is_ios_connected:
+		elif mux is not None and len(mux.devices) > 0 and not is_ios_connected:
 
-			is_ios_connected = True
+			try:
+				# make connection
+				device = mux.devices[0]
+				ios_socket = mux.connect(device, 2345) # 2345 is port number
+				ios_socket.setblocking(0)
+				ios_socket.settimeout(2)
 
-			# make connection
-			device = mux.devices[0]
-			print "connecting to device %s" % str(device)
-			ios_socket = mux.connect(device, 2345) # 2345 is port number
-			ios_socket.setblocking(0)
-			ios_socket.settimeout(2)
+				is_ios_connected = True
+			except:
+				pass
 
-			# kick off comms thread
-			pt_thr = PeerTalkThread(ios_socket)
-			pt_thr.daemon = True
-			pt_thr.start()
+			if is_ios_connected:
+				
+				print "connecting to device %s" % str(device)
+				# kick off comms thread
+				pt_thr = PeerTalkThread(ios_socket)
+				pt_thr.daemon = True
+				pt_thr.start()
 
 		else:
 			# sleep to not spin
@@ -254,8 +269,9 @@ def create_payload(states):
 		
 		if i < len(states) - 1:
 			message += ";"
-
-	#arduino_write_queue.append(message)
+	#return "Hello familia :)"
+	#print message
+	return message
 
 # Send string to iOS
 def send_to_ios(payload, ios_socket):
