@@ -1,20 +1,56 @@
 import sys, os
 import time
 import threading
-import serial
+import select
+import struct
+
+import SocketServer
 
 import cwiid
+import usbmux
 
 # ================ WIIMOTE VARIABLES
 
 wiimotes = []
-states = []
 
 # ================ iOS VARIABLES
 
+is_ios_connected = False
+ios_socket = None
 
 # ================ END GLOBALS
 
+# ================ CLASSES
+
+class PeerTalkThread(threading.Thread):
+	def __init__(self,*args):
+		self._psock = args[0]
+		self._running = True
+		threading.Thread.__init__(self)
+
+	def run(self):
+		framestructure = struct.Struct("! I I I I")
+		while self._running:
+			try:
+				msg = self._psock.recv(16)
+				if len(msg) > 0:
+					frame = framestructure.unpack(msg)
+					size = frame[3]
+					msgdata = self._psock.recv(size)
+					print "Got from iOS: %s" % msgdata
+			except:
+				pass
+
+	def stop(self):
+
+		global is_ios_connected
+		global ios_socket
+		
+		is_ios_connected = False
+		ios_socket = None
+		self._running = False
+
+# ================ FUNCTIONS
 
 def main():
 
@@ -22,98 +58,107 @@ def main():
 	sys.stderr = os.fdopen(os.dup(2), "w")
 	os.dup2(os.open("/dev/null", os.O_WRONLY), 2)
 
-	# Start independent pairing thread
-	pair_thr = threading.Thread(target=pair_loop)
+	# Start independent iOS connection thread
+	ios_conn_thr = threading.Thread(target=ios_connect_loop)
+	ios_conn.daemon = True
+	ios_conn.start()
+
+	# Start independent wiimote pairing thread
+	pair_thr = threading.Thread(target=wiimote_pair_loop)
 	pair_thr.daemon = True
 	pair_thr.start()
 
 	print "Press 1+2 on your Wiimote now"
 
 	# start input reading loop
-	read_input_loop()
+	wiimote_read_input_loop()
 
 # Polls connected wiimotes @ 60 Hz
-def read_input_loop():
+def wiimote_read_input_loop():
 
 	global wiimotes
-	global states
 
 	while True:
 
-		new_states = []
+		if is_ios_connected and ios_socket is not None:
+			states = []
 
-		# Go through all wiimotes
-		for i in range(len(wiimotes)):
+			# Go through all wiimotes
+			for i in range(len(wiimotes)):
 
-			wm = wiimotes[i]
+				wm = wiimotes[i]
 
-			# Print messages for button state
+				# Print messages for button state
 
-			state_dict = {}
+				state_dict = {}
 
-			ir_pos = wm.state['ir_src']			
-			
-			if ir_pos[0] is None:
-				state_dict["IR0"] = -1
-			else:
-				state_dict["IR0"] = str(ir_pos[0][0]) + "|" + str(ir_pos[0][1])
+				ir_pos = wm.state['ir_src']			
+				
+				if ir_pos[0] is None:
+					state_dict["IR0"] = -1
+				else:
+					state_dict["IR0"] = str(ir_pos[0][0]) + "|" + str(ir_pos[0][1])
 
-			if ir_pos[1] is None:
-				state_dict["IR1"] = -1
-			else:
-				state_dict["IR1"] = str(ir_pos[1][0]) + "|" + str(ir_pos[1][1])
+				if ir_pos[1] is None:
+					state_dict["IR1"] = -1
+				else:
+					state_dict["IR1"] = str(ir_pos[1][0]) + "|" + str(ir_pos[1][1])
 
-			if ir_pos[2] is None:
-				state_dict["IR2"] = -1
-			else:
-				state_dict["IR2"] = str(ir_pos[2][0]) + "|" + str(ir_pos[2][1])
+				if ir_pos[2] is None:
+					state_dict["IR2"] = -1
+				else:
+					state_dict["IR2"] = str(ir_pos[2][0]) + "|" + str(ir_pos[2][1])
 
-			if ir_pos[3] is None:
-				state_dict["IR3"] = -1
-			else:
-				state_dict["IR3"] = str(ir_pos[3][0]) + "|" + str(ir_pos[3][1])
-			
-			
+				if ir_pos[3] is None:
+					state_dict["IR3"] = -1
+				else:
+					state_dict["IR3"] = str(ir_pos[3][0]) + "|" + str(ir_pos[3][1])
+				
+				
 
-			state_dict["A"] = int(bool(wm.state['buttons'] & cwiid.BTN_A))
-			if state_dict["A"]:
-				pass#print "A %d" % (i + 1)			
+				state_dict["A"] = int(bool(wm.state['buttons'] & cwiid.BTN_A))
+				if state_dict["A"]:
+					pass#print "A %d" % (i + 1)			
 
-			state_dict["B"] = int(bool(wm.state['buttons'] & cwiid.BTN_B))
-			if state_dict["B"]:
-				pass#print "B %d" % (i + 1)
+				state_dict["B"] = int(bool(wm.state['buttons'] & cwiid.BTN_B))
+				if state_dict["B"]:
+					pass#print "B %d" % (i + 1)
 
-			state_dict["H"] = int(bool(wm.state['buttons'] & cwiid.BTN_HOME))
-			if state_dict["H"]:
-				pass#print "Home %d" % (i + 1)			
+				state_dict["H"] = int(bool(wm.state['buttons'] & cwiid.BTN_HOME))
+				if state_dict["H"]:
+					pass#print "Home %d" % (i + 1)			
 
-			state_dict["U"] =  int(bool(wm.state['buttons'] & cwiid.BTN_UP))
-			if state_dict["U"]:
-				pass#print "Up %d" % (i + 1)			
+				state_dict["U"] =  int(bool(wm.state['buttons'] & cwiid.BTN_UP))
+				if state_dict["U"]:
+					pass#print "Up %d" % (i + 1)			
 
-			state_dict["L"] = int(bool(wm.state['buttons'] & cwiid.BTN_LEFT))
-			if state_dict["L"]:
-				pass#print "Left %d" % (i + 1)			
+				state_dict["L"] = int(bool(wm.state['buttons'] & cwiid.BTN_LEFT))
+				if state_dict["L"]:
+					pass#print "Left %d" % (i + 1)			
 
-			state_dict["R"] = int(bool(wm.state['buttons'] & cwiid.BTN_RIGHT))
-			if state_dict["R"]:
-				pass#print "Right %d" % (i + 1)			
-			
-			state_dict["D"] = int(bool(wm.state['buttons'] & cwiid.BTN_DOWN))
-			if state_dict["D"]:
-				pass#print "Down %d" % (i + 1)			
+				state_dict["R"] = int(bool(wm.state['buttons'] & cwiid.BTN_RIGHT))
+				if state_dict["R"]:
+					pass#print "Right %d" % (i + 1)			
+				
+				state_dict["D"] = int(bool(wm.state['buttons'] & cwiid.BTN_DOWN))
+				if state_dict["D"]:
+					pass#print "Down %d" % (i + 1)			
 
-	
-			new_states.append(state_dict)
+		
+				states.append(state_dict)
 
-		states = new_states		
-		send_states()
+			payload = create_payload(states)
+			send_to_ios(payload, ios_socket)
 
-		# 60 Hz
-		time.sleep(0.016)
+			# 60 Hz
+			time.sleep(0.016)
 
-# Thread checking for new connections
-def pair_loop():
+		else:
+			# naptime
+			time.sleep(1.0)
+
+# Thread checking for new wiimote connections
+def wiimote_pair_loop():
 
 	global wiimotes
 
@@ -151,12 +196,46 @@ def pair_loop():
 
 		time.sleep(0.4)
 
-# adds states to queue to write				
-def send_states():
-	
-	global states
-	global arduino_write_queue
+# Thread checking for new ios connections
+def ios_connect_loop():
 
+	global is_ios_connected
+	global ios_socket
+
+	mux = usbmux.USBMux()
+
+	print "Searching for iOS..."
+
+	# try connect 
+	while True:
+
+		if len(mux.devices) == 0:
+
+			mux.process(1.0) # timeout for 1 second
+		
+		elif len(mux.devices) > 0 and not is_ios_connected:
+
+			is_ios_connected = True
+
+			# make connection
+			device = mux.devices[0]
+			print "connecting to device %s" % str(device)
+			ios_socket = mux.connect(device, 2345) # 2345 is port number
+			ios_socket.setblocking(0)
+			ios_socket.settimeout(2)
+
+			# kick off comms thread
+			pt_thr = PeerTalkThread(ios_socket)
+			pt_thr.daemon = True
+			pt_thr.start()
+
+		else:
+			# sleep to not spin
+			time.sleep(1.0)
+
+# Creates payload to send from states			
+def create_payload(states):
+	
 	message = ""
 
 	for i in range(len(states)):
@@ -177,8 +256,21 @@ def send_states():
 			message += ";"
 
 	#arduino_write_queue.append(message)
-			
-		
+
+# Send string to iOS
+def send_to_ios(payload, ios_socket):
+
+	r8 = payload.encode('utf-8')
+	headervalues = (1,101,0,len(r8)+4)
+	framestructure = struct.Struct("! I I I I")
+	packed_data = framestructure.pack(*headervalues)
+	ios_socket.send(packed_data)
+	messagevalues = (len(r8),r8)
+	fmtstring = "! I {0}s".format(len(r8))
+	sm = struct.Struct(fmtstring)
+	packed_message = sm.pack(*messagevalues)
+	ios_socket.send(packed_message)
+
 
 if __name__ == "__main__":
 	
