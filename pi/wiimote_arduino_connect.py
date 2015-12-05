@@ -10,8 +10,25 @@ import cwiid
 wiimotes = []
 states = []
 
-# ================ iOS VARIABLES
+# ================ ARDUINO VARIABLES
 
+arduino_serial = None
+is_arduino_connected = False
+arduino_write_queue = []
+
+arduino_serial_name = "/dev/ttyACM0"
+baud_rate = 115200
+
+handshake_send_msg = "RBPI_HANDSHAKE"
+handshake_receive_msg = "ARD_HANDSHAKE"
+confirmation_msg = "ARD_CONFIRM"
+
+message_read_header = "ARDU:"
+message_write_header = "RBPI:"
+message_footer = ":END"
+
+message_code_error = "0:"
+message_code_success = "1:"
 
 # ================ END GLOBALS
 
@@ -26,6 +43,16 @@ def main():
 	pair_thr = threading.Thread(target=pair_loop)
 	pair_thr.daemon = True
 	pair_thr.start()
+
+	# Start independent serial comm thread
+	serial_read_thr = threading.Thread(target=serial_read_loop)
+	serial_read_thr.daemon = True
+	serial_read_thr.start()
+
+	# Start write thread
+	serial_write_thr = threading.Thread(target=serial_write_loop)
+	serial_write_thr.daemon = True
+	serial_write_thr.start()
 
 	print "Press 1+2 on your Wiimote now"
 
@@ -151,6 +178,123 @@ def pair_loop():
 
 		time.sleep(0.4)
 
+def serial_write_loop():	
+
+	global arduino_serial
+	global is_arduino_connected
+	global arduino_write_queue
+
+	while True:
+
+		# Wait until read loop makes connection
+		if arduino_serial is None or not is_arduino_connected:
+
+			time.sleep(1)
+		else:
+		# Proceed to write from write queue @ 60HZ
+
+			#message_to_write = "HELLO ITS NICK"
+			#arduino_write_queue.append(message_to_write)
+
+			
+			# Take copy, pop original queue
+			write_queue = list(arduino_write_queue)
+			arduino_write_queue = arduino_write_queue[len(write_queue):]
+
+			for write_message in write_queue:
+
+				if len(write_message.strip()) > 0:
+
+					entire_message = message_write_header + message_code_success + write_message + message_footer
+					arduino_serial.write(entire_message)
+
+					#print "Sent: %s" % write_message
+
+			# 60 Hz
+			time.sleep(.016)
+		
+
+# Thread reading loop
+def serial_read_loop():
+
+	global arduino_serial
+	global is_arduino_connected
+	global arduino_write_queue
+
+	while True:
+		
+		# Open Arduino serial connection
+		
+		if arduino_serial is None:
+			print "Scanning serial..."
+
+			try:
+				arduino_serial = serial.Serial(arduino_serial_name, baud_rate)
+				arduino_serial.flushInput()
+				print "Started serial connection..."
+
+			except:
+				pass
+
+			time.sleep(1)
+			continue
+
+		read_line = arduino_serial.readline()
+		read_line = read_line.strip()
+		
+		if is_arduino_connected:
+
+			# Check header and footer		
+			if read_line.startswith(message_read_header) and read_line.endswith(message_footer):
+
+				stripped_line = read_line[len(message_read_header):]
+				stripped_line = stripped_line[:-len(message_footer)]
+
+				# Check message code
+				successful_msg = False
+				message_data = ""
+
+				if stripped_line.startswith(message_code_success):
+					message_data = stripped_line[len(message_code_success):]
+					successful_msg = True
+
+				elif stripped_line.startswith(message_code_error):
+					message_data = stripped_line[len(message_code_success):]
+					successful_msg = False
+
+				# Do success message stuff
+				if successful_msg:
+
+					print "Got message: <%s>" % message_data
+
+				else:
+
+					print "Got error: <%s>" % read_line
+
+			else:
+
+				print "Got unknown message: <%s>" % read_line
+			
+		else:
+
+			# check for handshake
+			if read_line.startswith(handshake_receive_msg):
+				print "Received handshake: <%s>" % read_line
+				# send back handshake
+				arduino_serial.write(handshake_send_msg)
+				arduino_serial.write("\n")
+
+			# check for confirmation
+			if read_line.startswith(confirmation_msg):
+
+				print "Received confirmation: <%s>" % read_line
+				is_arduino_connected = True
+
+			print "Got unknown message: <%s>" % read_line		
+
+		# 60 Hz
+		time.sleep(1)
+		
 # adds states to queue to write				
 def send_states():
 	
@@ -176,7 +320,7 @@ def send_states():
 		if i < len(states) - 1:
 			message += ";"
 
-	#arduino_write_queue.append(message)
+	arduino_write_queue.append(message)
 			
 		
 
