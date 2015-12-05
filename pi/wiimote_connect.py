@@ -60,8 +60,8 @@ def main():
 
 	# Start independent iOS connection thread
 	ios_conn_thr = threading.Thread(target=ios_connect_loop)
-	ios_conn.daemon = True
-	ios_conn.start()
+	ios_conn_thr.daemon = True
+	ios_conn_thr.start()
 
 	# Start independent wiimote pairing thread
 	pair_thr = threading.Thread(target=wiimote_pair_loop)
