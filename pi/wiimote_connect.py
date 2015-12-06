@@ -80,7 +80,7 @@ def wiimote_read_input_loop():
 
 	while True:
 
-		if is_ios_connected and ios_socket is not None:
+		if True:#is_ios_connected and ios_socket is not None:
 		
 			states = []
 
@@ -95,35 +95,37 @@ def wiimote_read_input_loop():
 
 				ir_pos = wm.state['ir_src']			
 				
+				#print ir_pos
+				nir = [x for x in ir_pos if x is not None]				
+				print len(nir)
+
 				if ir_pos[0] is None:
 					state_dict["IR0"] = -1
 				else:
-					state_dict["IR0"] = str(ir_pos[0][0]) + "|" + str(ir_pos[0][1])
+					state_dict["IR0"] = str(ir_pos[0]['pos'][0]) + "|" + str(ir_pos[0]['pos'][1])
 
 				if ir_pos[1] is None:
 					state_dict["IR1"] = -1
 				else:
-					state_dict["IR1"] = str(ir_pos[1][0]) + "|" + str(ir_pos[1][1])
+					state_dict["IR1"] = str(ir_pos[1]['pos'][0]) + "|" + str(ir_pos[1]['pos'][1])
 
 				if ir_pos[2] is None:
 					state_dict["IR2"] = -1
 				else:
-					state_dict["IR2"] = str(ir_pos[2][0]) + "|" + str(ir_pos[2][1])
+					state_dict["IR2"] = str(ir_pos[2]['pos'][0]) + "|" + str(ir_pos[2]['pos'][1])
 
 				if ir_pos[3] is None:
 					state_dict["IR3"] = -1
 				else:
-					state_dict["IR3"] = str(ir_pos[3][0]) + "|" + str(ir_pos[3][1])
-				
-				
+					state_dict["IR3"] = str(ir_pos[3]['pos'][0]) + "|" + str(ir_pos[3]['pos'][1])				
 
 				state_dict["A"] = int(bool(wm.state['buttons'] & cwiid.BTN_A))
 				if state_dict["A"]:
-					pass#print "A %d" % (i + 1)			
+					print "A %d" % (i + 1)			
 
 				state_dict["B"] = int(bool(wm.state['buttons'] & cwiid.BTN_B))
 				if state_dict["B"]:
-					pass#print "B %d" % (i + 1)
+					print "B %d" % (i + 1)
 
 				state_dict["H"] = int(bool(wm.state['buttons'] & cwiid.BTN_HOME))
 				if state_dict["H"]:
@@ -147,14 +149,18 @@ def wiimote_read_input_loop():
 
 		
 				states.append(state_dict)
-			
-			payload = create_payload(states)
-			payload = payload.strip()
-			if len(payload) > 0:
-				send_to_ios(payload, ios_socket)
+				
+			if is_ios_connected and ios_socket is not None:
+					
+				payload = create_payload(states)
+				payload += "~"
+				payload += str(long(round(time.time() * 1000)))
+				payload = payload.strip()
+				if len(payload) > 0:
+					send_to_ios(payload, ios_socket)
 
 			# 60 Hz
-			time.sleep(0.016)
+			time.sleep(0.033)
 
 		else:
 			# naptime
@@ -275,6 +281,8 @@ def create_payload(states):
 
 # Send string to iOS
 def send_to_ios(payload, ios_socket):
+	
+	print "Sending: %s" % payload
 
 	r8 = payload.encode('utf-8')
 	headervalues = (1,101,0,len(r8)+4)
