@@ -1,0 +1,20 @@
+<linker>
+	<assembly fullname="Assembly-CSharp">
+		<type fullname="Cardboard">
+			<method name="Recenter"/>
+		</type>
+		<type fullname="Teleport">
+			<method name="Reset"/>
+			<method name="ToggleVRMode"/>
+			<method name="SetGazedAt"/>
+			<method name="SetGazedAt"/>
+			<method name="TeleportRandomly"/>
+			<method name="SetGazedAt"/>
+			<method name="SetGazedAt"/>
+			<method name="TeleportRandomly"/>
+		</type>
+		<type fullname="TrackSensorManager">
+			<method name="StartHeadTracking"/>
+		</type>
+	</assembly>
+</linker>
