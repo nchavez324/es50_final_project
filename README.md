@@ -20,6 +20,7 @@ The components function as follows:
 - Obj-C on the iPhone decodes and pipes this to the Unity game.
 - C# in the Unity game reconstructs the relative positions of the headset and wand via this info.
 
-Unfortunately, the software did not work as well as intended, but this was a fantastic Electrical Engineering learning opportunity: communication via embedded devices over a variety of protocols and programming environments.
+This was a fantastic Electrical Engineering learning opportunity: communication via embedded devices over a variety of protocols and programming environments. It also gave me a chance to exercise Computer Vision algorithms in a
+real-world and realtime scenario.
 
 [FSK]: https://en.wikipedia.org/wiki/Frequency-shift_keying
